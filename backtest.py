@@ -10,20 +10,34 @@ from db import *
 logging.basicConfig(level=logging.DEBUG)
 
 # Candle length milisecond
-candle_period = 10000
+# 5 seconds
+candle_period = 5000
 # Strategy look back length
-strategy_length = 1440
+# # 1 hours
+# strategy_length = 720
+# # 2 hours
+# strategy_length = 1440
+# 3 hours
+strategy_length = 2160
+# # 4 hours
+# strategy_length = 2880
+# # 5 hours
+# strategy_length = 3600
+# # 6 hours
+# strategy_length = 4320
 # Margin available
 margin = 1000
 # Trailing stop percent
-trailing_profit_pct = 1
-trailing_stop_pct = 0.5
+trailing_profit_pct = 2
+trailing_stop_pct = 1
 # Stop loss percent
-stop_pct = 1
+stop_pct = 3
 # Back test data settings
 selector = 'bitfinex.BTC-USD'
-start = time.mktime(datetime.strptime('201803200000', "%Y%m%d%H%M%S").timetuple()) * 1000
-end = time.mktime(datetime.strptime('201804032359', "%Y%m%d%H%M%S").timetuple()) * 1000
+start = time.mktime(datetime.strptime('201708010000', "%Y%m%d%H%M%S").timetuple()) * 1000
+end = time.mktime(datetime.strptime('201708302359', "%Y%m%d%H%M%S").timetuple()) * 1000
+
+
 # print(start, end)
 
 
@@ -58,7 +72,7 @@ class OHCLV(object):
 
 
 class Independence(object):
-    def __init__(self, length: int=60):
+    def __init__(self, length: int = 60):
         self.lookback = []
         self.signal = ''
         self.length = length
@@ -77,24 +91,25 @@ class Independence(object):
                     self.support = candle.close
 
     def add_candle(self, candle: OHCLV):
-        # Add OHCLV candle to list
+        # Calculate signal
         if self.support != 0 and self.resistance != 0:
             if candle.close > self.resistance:
-                self.signal = 'buy'
-            elif candle.close < self.support:
                 self.signal = 'sell'
+            elif candle.close < self.support:
+                self.signal = 'buy'
             else:
                 self.signal = 'none'
+        # Add OHCLV candle to list
         self.lookback.append(candle)
         # Trim list if exceed length
         if len(self.lookback) > self.length:
-            self.lookback = self.lookback[len(self.lookback)-self.length:]
+            self.lookback = self.lookback[len(self.lookback) - self.length:]
         # Calc
         self.calc()
 
 
 class Position(object):
-    def __init__(self, symbol: str='btcusd', base: float=0, amount: float=0):
+    def __init__(self, symbol: str = 'btcusd', base: float = 0, amount: float = 0):
         self.id = ''
         self.symbol = symbol
         self.status = 'INACTIVE'
@@ -112,7 +127,7 @@ class Position(object):
             self.pl = trade['price'] * self.amount - self.base * self.amount
             self.pl_pct = self.pl / abs(self.base * self.amount) * 100
 
-    def open(self, symbol='btcusd', base: float=0, amount: float=0):
+    def open(self, symbol='btcusd', base: float = 0, amount: float = 0):
         self.symbol = symbol
         self.status = 'ACTIVE'
         self.base = base
@@ -121,16 +136,14 @@ class Position(object):
     def close(self):
         self.status = 'CLOSED'
 
-    def trailing_stop(self, trade, percent: float=0):
+    def trailing_stop(self, trade, percent: float = 0):
         self.trailing = True
         if self.last_pl_pct == 0:
             self.last_pl_pct = self.pl_pct
         elif self.pl_pct > self.last_pl_pct:
             self.last_pl_pct = self.pl_pct
-        elif self.pl_pct - self.last_pl_pct >= percent:
+        elif self.last_pl_pct - self.pl_pct >= percent:
             self.close()
-
-
 
 
 # Get trades data from db
@@ -141,6 +154,7 @@ strategy = Independence(strategy_length)
 pos = Position()
 positions = []
 last_signal = ''
+pl = 0
 for trade in trade_cursor:
     # Add trade to OHLCV candle
     candle.add_trade(trade['time'], trade['size'], trade['price'], trade['size'])
@@ -152,29 +166,35 @@ for trade in trade_cursor:
         # print(strategy.signal)
         # We got a new signal that difference from last signal
         if strategy.signal != last_signal:
-            # logging.info(last_signal + '->' + strategy.signal + ':' + pos.status)
+            # logging.info(last_signal + '->' + strategy.signal + ':' + str(trade['price']))
             # print(last_signal, '->', strategy.signal)
             # Open long position
             if strategy.signal == 'buy' and pos.status != 'ACTIVE':
-                logging.info('Open long position')
+                logging.info('Open long position @ ' + str(trade['price']))
                 pos.open('btcusd', int(trade['price']), margin / int(trade['price']))
             # Open short position
             if strategy.signal == 'sell' and pos.status != 'ACTIVE':
-                logging.info('Open short position')
+                logging.info('Open short position @ ' + str(trade['price']))
                 pos.open('btcusd', int(trade['price']), -margin / int(trade['price']))
             last_signal = strategy.signal
         # Calculate position P/L
         if pos.status == 'ACTIVE':
             pos.calc(trade)
-            if pos.pl_pct <= -stop_pct \
-                    or (strategy.signal == 'sell' and pos.amount > 0) or (strategy.signal == 'buy' and pos.amount < 0):
-                logging.info('Close position' + str(pos.pl))
+            if not pos.trailing and (pos.pl_pct <= -stop_pct
+                                     or (strategy.signal == 'sell' and pos.amount > 0)
+                                     or (strategy.signal == 'buy' and pos.amount < 0)):
+                logging.info('Close position by stop-loss @ ' + str(trade['price']) + ' @ ' + str(pos.pl_pct) if pos.pl_pct <= -stop_pct
+                             else 'Close position by signal @ ' + str(trade['price']) + ' @ ' + str(pos.pl_pct))
                 pos.close()
             if pos.pl_pct >= trailing_profit_pct and not pos.trailing:
                 pos.trailing_stop(trade, trailing_stop_pct)
             if pos.status != "CLOSED" and pos.trailing:
                 pos.trailing_stop(trade, trailing_stop_pct)
             if pos.status == "CLOSED":
+                if pos.trailing:
+                    logging.info('Close position by trailing @ ' + str(trade['price']) + ' @ ' + str(pos.pl_pct))
+                pl += pos.pl
+                logging.info('PL: ' + str(pl))
                 positions.append(pos)
                 pos = Position()
         # print(candle.start, candle.end, candle.open, candle.high, candle.low, candle.close, candle.volume)
@@ -182,10 +202,18 @@ for trade in trade_cursor:
 
 # print(pos.base, pos.amount, pos.pl, pos.pl_pct)
 profit = 0
+wins = 0
+loses = 0
 for position in positions:
-    #print(position.pl)
+    # print(position.pl)
     profit += position.pl
-print(len(positions), 'position traded over', (end - start)/1000/60/60/24, 'days')
+    if position.pl > 0:
+        wins += 1
+    else:
+        loses += 1
+print(len(positions), 'position traded over', (end - start) / 1000 / 60 / 60 / 24, 'days')
+print('Wins/Loses:', wins, '/', loses)
 print('Profit:', profit)
+print('Max trading fee (taker):', len(positions) * margin * 0.004)
 # for candle in candle_list:
 #     print(candle.start, candle.end, candle.open, candle.high, candle.low, candle.close, candle.volume)
