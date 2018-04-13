@@ -13,8 +13,9 @@ logging.basicConfig(level=logging.DEBUG)
 # 5 seconds
 candle_period = 5000
 # Strategy look back length
+strategy_length = 1550
 # # 1 hours
-strategy_length = 720
+# strategy_length = 720
 # # 2 hours
 # strategy_length = 1440
 # good at 2017-08
@@ -31,13 +32,13 @@ strategy_length = 720
 # Margin available
 margin = 1000
 # Trailing stop percent
-trailing_profit_pct = 3
+trailing_profit_pct = 4
 trailing_stop_pct = 1
 # Stop loss percent
-stop_pct = 2
+stop_pct = 3
 # Back test data settings
 selector = 'bitfinex.BTC-USD'
-start = time.mktime(datetime.strptime('201803010000', "%Y%m%d%H%M%S").timetuple()) * 1000
+start = time.mktime(datetime.strptime('201708010000', "%Y%m%d%H%M%S").timetuple()) * 1000
 end = time.mktime(datetime.strptime('201803302359', "%Y%m%d%H%M%S").timetuple()) * 1000
 
 
@@ -97,9 +98,9 @@ class Independence(object):
         # Calculate signal
         if self.support != 0 and self.resistance != 0:
             if candle.close >= self.resistance:
-                self.signal = 'sell'
-            elif candle.close <= self.support:
                 self.signal = 'buy'
+            elif candle.close <= self.support:
+                self.signal = 'sell'
             else:
                 self.signal = 'none'
         # Add OHCLV candle to list
@@ -127,22 +128,23 @@ class VolumeBased(object):
             for candle in self.lookback:
                 self.buy_vol += candle.buy_vol
                 self.sell_vol += candle.sell_vol
-
-    def add_candle(self, candle: OHCLV):
         # Calculate signal
-        if self.buy_vol > self.sell_vol:
+        # print("Vol", self.buy_vol, self.sell_vol)
+        if self.buy_vol > self.sell_vol * 1.2:
             self.signal = 'sell'
-        elif self.sell_vol > self.buy_vol:
+        elif self.sell_vol > self.buy_vol * 1.2:
             self.signal = 'buy'
         else:
             self.signal = 'none'
+
+    def add_candle(self, candle: OHCLV):
         # Add OHCLV candle to list
         self.lookback.append(candle)
+        # Calculate signal
+        self.calc()
         # Trim list if exceed length
         if len(self.lookback) > self.length:
             self.lookback = self.lookback[len(self.lookback) - self.length:]
-        # Calc
-        self.calc()
 
 
 class Position(object):
@@ -187,19 +189,20 @@ class Position(object):
 trade_cursor = trades.find({"selector": selector, "time": {"$lte": end, "$gte": start}}).sort([("time", 1)])
 # Back testing
 candle = OHCLV()
-# strategy = Independence(strategy_length)
 strategy = VolumeBased(strategy_length)
+# strategy = Independence(strategy_length)
 pos = Position()
 positions = []
 last_signal = ''
 pl = 0
 for trade in trade_cursor:
     # Add trade to OHLCV candle
-    candle.add_trade(trade['time'], trade['size'], trade['price'], trade['size'])
+    candle.add_trade(trade['time'], trade['size'], trade['price'], trade['side'])
     # print(candle.start, candle.end, candle.open, candle.high, candle.low, candle.close, candle.volume)
     # Complete one OHCLV candle
     if candle.start != 0 and candle.end != 0 and candle.end - candle.start >= candle_period:
         # Add candle to strategy
+        # print(candle.volume, candle.sell_vol, candle.buy_vol)
         strategy.add_candle(candle)
         # print(strategy.signal)
         # We got a new signal that difference from last signal
@@ -251,7 +254,8 @@ for position in positions:
         loses += 1
 print(len(positions), 'position traded over', (end - start) / 1000 / 60 / 60 / 24, 'days')
 print('Wins/Loses:', wins, '/', loses)
-print('Profit:', profit)
-print('Max trading fee (taker):', len(positions) * margin * 0.004)
+fee = len(positions) * margin * 0.004
+print('Profit:', profit, profit - fee)
+print('Max trading fee (taker):', fee)
 # for candle in candle_list:
 #     print(candle.start, candle.end, candle.open, candle.high, candle.low, candle.close, candle.volume)
