@@ -187,7 +187,8 @@ class Position(object):
 trade_cursor = trades.find({"selector": selector, "time": {"$lte": end, "$gte": start}}).sort([("time", 1)])
 # Back testing
 candle = OHCLV()
-strategy = Independence(strategy_length)
+# strategy = Independence(strategy_length)
+strategy = VolumeBased(strategy_length)
 pos = Position()
 positions = []
 last_signal = ''
