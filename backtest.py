@@ -14,12 +14,15 @@ logging.basicConfig(level=logging.DEBUG)
 candle_period = 5000
 # Strategy look back length
 # # 1 hours
-# strategy_length = 720
+strategy_length = 720
 # # 2 hours
 # strategy_length = 1440
-# 3 hours
-strategy_length = 2160
-# # 4 hours
+# good at 2017-08
+# strategy_length = 1600
+# strategy_length = 1700
+# # 3 hours
+# strategy_length = 2160
+# 4 hours
 # strategy_length = 2880
 # # 5 hours
 # strategy_length = 3600
@@ -28,14 +31,14 @@ strategy_length = 2160
 # Margin available
 margin = 1000
 # Trailing stop percent
-trailing_profit_pct = 2
+trailing_profit_pct = 3
 trailing_stop_pct = 1
 # Stop loss percent
-stop_pct = 3
+stop_pct = 2
 # Back test data settings
 selector = 'bitfinex.BTC-USD'
-start = time.mktime(datetime.strptime('201708010000', "%Y%m%d%H%M%S").timetuple()) * 1000
-end = time.mktime(datetime.strptime('201708302359', "%Y%m%d%H%M%S").timetuple()) * 1000
+start = time.mktime(datetime.strptime('201803010000', "%Y%m%d%H%M%S").timetuple()) * 1000
+end = time.mktime(datetime.strptime('201803302359', "%Y%m%d%H%M%S").timetuple()) * 1000
 
 
 # print(start, end)
@@ -50,8 +53,8 @@ class OHCLV(object):
         self.low = 0
         self.close = 0
         self.volume = 0
-        self.buy_volume = 0
-        self.sell_volume = 0
+        self.buy_vol = 0
+        self.sell_vol = 0
 
     def add_trade(self, trade_time, size, price, side):
         if self.start == 0:
@@ -65,9 +68,9 @@ class OHCLV(object):
         if self.low == 0 or self.low > price:
             self.low = price
         if side == 'buy':
-            self.buy_volume += size
+            self.buy_vol += size
         if side == 'sell':
-            self.sell_volume += size
+            self.sell_vol += size
         self.volume += size
 
 
@@ -93,12 +96,46 @@ class Independence(object):
     def add_candle(self, candle: OHCLV):
         # Calculate signal
         if self.support != 0 and self.resistance != 0:
-            if candle.close > self.resistance:
+            if candle.close >= self.resistance:
                 self.signal = 'sell'
-            elif candle.close < self.support:
+            elif candle.close <= self.support:
                 self.signal = 'buy'
             else:
                 self.signal = 'none'
+        # Add OHCLV candle to list
+        self.lookback.append(candle)
+        # Trim list if exceed length
+        if len(self.lookback) > self.length:
+            self.lookback = self.lookback[len(self.lookback) - self.length:]
+        # Calc
+        self.calc()
+
+
+class VolumeBased(object):
+    def __init__(self, length: int = 60):
+        self.lookback = []
+        self.signal = ''
+        self.length = length
+        self.buy_vol = 0
+        self.sell_vol = 0
+
+    def calc(self):
+        # Calculate support and resistance
+        self.buy_vol = 0
+        self.sell_vol = 0
+        if len(self.lookback) >= self.length:
+            for candle in self.lookback:
+                self.buy_vol += candle.buy_vol
+                self.sell_vol += candle.sell_vol
+
+    def add_candle(self, candle: OHCLV):
+        # Calculate signal
+        if self.buy_vol > self.sell_vol:
+            self.signal = 'sell'
+        elif self.sell_vol > self.buy_vol:
+            self.signal = 'buy'
+        else:
+            self.signal = 'none'
         # Add OHCLV candle to list
         self.lookback.append(candle)
         # Trim list if exceed length
