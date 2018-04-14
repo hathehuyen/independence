@@ -11,9 +11,12 @@ logging.basicConfig(level=logging.DEBUG)
 
 # Candle length milisecond
 # 5 seconds
-candle_period = 5000
+# candle_period = 5000
+candle_period = 60000 * 60
+min_length = 1
+max_length = 24 * 7
+diff = 1
 # Strategy look back length
-strategy_length = 1550
 # # 1 hours
 # strategy_length = 720
 # # 2 hours
@@ -32,14 +35,14 @@ strategy_length = 1550
 # Margin available
 margin = 1000
 # Trailing stop percent
-trailing_profit_pct = 4
+trailing_profit_pct = 1
 trailing_stop_pct = 1
 # Stop loss percent
-stop_pct = 3
+stop_pct = 80
 # Back test data settings
 selector = 'bitfinex.BTC-USD'
-start = time.mktime(datetime.strptime('201708010000', "%Y%m%d%H%M%S").timetuple()) * 1000
-end = time.mktime(datetime.strptime('201803302359', "%Y%m%d%H%M%S").timetuple()) * 1000
+start = time.mktime(datetime.strptime('201709010000', "%Y%m%d%H%M%S").timetuple()) * 1000
+end = time.mktime(datetime.strptime('201711302359', "%Y%m%d%H%M%S").timetuple()) * 1000
 
 
 # print(start, end)
@@ -113,10 +116,12 @@ class Independence(object):
 
 
 class VolumeBased(object):
-    def __init__(self, length: int = 60):
+    def __init__(self, min_len: int=10, max_len: int = 60, diff: float=1):
         self.lookback = []
         self.signal = ''
-        self.length = length
+        self.min_len = min_len
+        self.max_len = max_len
+        self.diff = diff
         self.buy_vol = 0
         self.sell_vol = 0
 
@@ -124,16 +129,19 @@ class VolumeBased(object):
         # Calculate support and resistance
         self.buy_vol = 0
         self.sell_vol = 0
-        if len(self.lookback) >= self.length:
+        self.diff = 100 / len(self.lookback)
+        if len(self.lookback) >= self.min_len:
             for candle in self.lookback:
                 self.buy_vol += candle.buy_vol
                 self.sell_vol += candle.sell_vol
         # Calculate signal
         # print("Vol", self.buy_vol, self.sell_vol)
-        if self.buy_vol > self.sell_vol * 1.2:
+        if self.buy_vol > self.sell_vol * (1 + self.diff / 10):
             self.signal = 'sell'
-        elif self.sell_vol > self.buy_vol * 1.2:
+            self.lookback.clear()
+        elif self.sell_vol > self.buy_vol * (1 + self.diff / 10):
             self.signal = 'buy'
+            self.lookback.clear()
         else:
             self.signal = 'none'
 
@@ -142,9 +150,9 @@ class VolumeBased(object):
         self.lookback.append(candle)
         # Calculate signal
         self.calc()
-        # Trim list if exceed length
-        if len(self.lookback) > self.length:
-            self.lookback = self.lookback[len(self.lookback) - self.length:]
+        # Trim list if exceed max length
+        if len(self.lookback) > self.max_len:
+            self.lookback = self.lookback[len(self.lookback) - self.max_len:]
 
 
 class Position(object):
@@ -189,7 +197,7 @@ class Position(object):
 trade_cursor = trades.find({"selector": selector, "time": {"$lte": end, "$gte": start}}).sort([("time", 1)])
 # Back testing
 candle = OHCLV()
-strategy = VolumeBased(strategy_length)
+strategy = VolumeBased(min_len=min_length, max_len=max_length, diff=diff)
 # strategy = Independence(strategy_length)
 pos = Position()
 positions = []
