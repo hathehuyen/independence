@@ -1,5 +1,8 @@
 class OHLCV(object):
     def __init__(self):
+        """
+        Open - High - Low - Close - Volume
+        """
         self.start = 0
         self.end = 0
         self.open = 0
@@ -11,6 +14,14 @@ class OHLCV(object):
         self.sell_vol = 0
 
     def add_trade(self, trade_time, size, price, side):
+        """
+        Add a trade to OHLCV
+        :param trade_time: trade timestamp
+        :param size: trade size (amount)
+        :param price: trade price
+        :param side: buy or sell
+        :return: none
+        """
         if self.start == 0:
             self.start = trade_time
             self.open = price

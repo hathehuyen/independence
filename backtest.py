@@ -15,17 +15,17 @@ logging.basicConfig(level=logging.DEBUG)
 # Margin available
 margin = 1000
 # Trailing stop percent
-trailing_profit_pct = 81
+trailing_profit_pct = 30
 trailing_stop_pct = 1
 # Stop loss percent
-stop_pct = 81
+stop_pct = 30
 # Candle length milisecond
 # 5 seconds
 # candle_period = 5000
-candle_period = 60000 * 30
-min_length = 1
-max_length = 24 * 7
-diff = 0.1
+candle_period = 60000
+min_length = 1 * 30
+max_length = 24 * 7 * 30
+diff = 3
 # Strategy look back length
 # # 1 hours
 # strategy_length = 720
@@ -43,8 +43,8 @@ diff = 0.1
 # # 6 hours
 # strategy_length = 4320
 # Back test data settings
-selector = 'bitfinex.BTC-USD'
-start = time.mktime(datetime.strptime('201803010000', "%Y%m%d%H%M%S").timetuple()) * 1000
+selector = 'bitfinex.ETP-USD'
+start = time.mktime(datetime.strptime('201709010000', "%Y%m%d%H%M%S").timetuple()) * 1000
 end = time.mktime(datetime.strptime('201803302359', "%Y%m%d%H%M%S").timetuple()) * 1000
 
 
@@ -76,13 +76,13 @@ for trade in trade_cursor:
             # logging.info(last_signal + '->' + strategy.signal + ':' + str(trade['price']))
             # print(last_signal, '->', strategy.signal)
             # Open long position
-            if strategy.signal == 'buy' and pos.status != 'ACTIVE':
+            if strategy.signal == 'buy' and pos.status != 'ACTIVE' and trade['price'] != 0:
                 logging.info('Open long position @ ' + str(trade['price']) + " length: " + str(strategy.length))
-                pos.open('btcusd', int(trade['price']), margin / int(trade['price']))
+                pos.open('btcusd', float(trade['price']), margin / float(trade['price']))
             # Open short position
-            if strategy.signal == 'sell' and pos.status != 'ACTIVE':
+            if strategy.signal == 'sell' and pos.status != 'ACTIVE' and trade['price'] != 0:
                 logging.info('Open short position @ ' + str(trade['price']) + " length: " + str(strategy.length))
-                pos.open('btcusd', int(trade['price']), -margin / int(trade['price']))
+                pos.open('btcusd', float(trade['price']), -margin / float(trade['price']))
             last_signal = strategy.signal
         # Calculate position P/L
         if pos.status == 'ACTIVE':
@@ -122,7 +122,8 @@ for position in positions:
 print(len(positions), 'position traded over', (end - start) / 1000 / 60 / 60 / 24, 'days')
 print('Wins/Loses:', wins, '/', loses)
 fee = len(positions) * margin * 0.004
-print('Profit:', profit, profit - fee)
-print('Max trading fee (taker):', fee)
+print('Profit:', profit - fee)
+print('ROI%: ', (profit - fee) / margin * 100)
+# print('Max trading fee (taker):', fee)
 # for candle in candle_list:
 #     print(candle.start, candle.end, candle.open, candle.high, candle.low, candle.close, candle.volume)

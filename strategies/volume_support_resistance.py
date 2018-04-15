@@ -7,7 +7,7 @@ class VolumeSupportResistance(object):
         Volume, support, resistance strategy
         :param min_len: minimum length
         :param max_len: maximum length
-        :param diff:
+        :param diff: difference percentage
         """
         self.lookback = []
         self.signal = ''
@@ -23,7 +23,7 @@ class VolumeSupportResistance(object):
     def calc(self):
         """
         Calculate
-        :return:
+        :return: none
         """
         self.support = 0
         self.resistance = 0
@@ -52,13 +52,18 @@ class VolumeSupportResistance(object):
         # print(self.length)
 
     def add_candle(self, candle: OHLCV):
+        """
+        Add cancle
+        :param candle: OHLCV candle
+        :return: none
+        """
         # Calculate signal
         if self.support != 0 and self.resistance != 0:
-            if candle.close >= self.resistance:
-                self.signal = 'sell'
-                # self.lookback.clear()
-            elif candle.close <= self.support:
+            if candle.close >= self.resistance and self.buy_vol / self.sell_vol > self.diff:
                 self.signal = 'buy'
+                # self.lookback.clear()
+            elif candle.close <= self.support and self.sell_vol - self.buy_vol > self.diff:
+                self.signal = 'sell'
                 # self.lookback.clear()
             else:
                 self.signal = 'none'
@@ -67,5 +72,5 @@ class VolumeSupportResistance(object):
         # Calc
         self.calc()
         # Trim list if exceed length
-        if len(self.lookback) > self.length:
-            self.lookback = self.lookback[len(self.lookback) - self.length:]
+        if len(self.lookback) > self.max_len:
+            self.lookback = self.lookback[len(self.lookback) - self.max_len:]

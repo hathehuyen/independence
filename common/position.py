@@ -1,5 +1,11 @@
 class Position(object):
     def __init__(self, symbol: str = 'btcusd', base: float = 0, amount: float = 0):
+        """
+        Position object used for back test simulation
+        :param symbol:
+        :param base:
+        :param amount:
+        """
         self.id = ''
         self.symbol = symbol
         self.status = 'INACTIVE'
@@ -13,20 +19,41 @@ class Position(object):
         self.last_pl_pct = 0
 
     def calc(self, trade):
+        """
+        Calculate profit/loss
+        :param trade:
+        :return:
+        """
         if self.base != 0 and self.amount != 0:
             self.pl = trade['price'] * self.amount - self.base * self.amount
             self.pl_pct = self.pl / abs(self.base * self.amount) * 100
 
     def open(self, symbol='btcusd', base: float = 0, amount: float = 0):
+        """
+        Open position
+        :param symbol: btc/usd
+        :param base: base price
+        :param amount: amount
+        :return: none
+        """
         self.symbol = symbol
         self.status = 'ACTIVE'
         self.base = base
         self.amount = amount
 
     def close(self):
+        """
+        Close position
+        :return: none
+        """
         self.status = 'CLOSED'
 
     def trailing_stop(self, percent: float = 0):
+        """
+        Trailing stop: if profit reach target
+        :param percent:
+        :return:
+        """
         self.trailing = True
         if self.last_pl_pct == 0:
             self.last_pl_pct = self.pl_pct
