@@ -90,7 +90,8 @@ for trade in trade_cursor:
             if not pos.trailing and (pos.pl_pct <= -stop_pct
                                      or (strategy.signal == 'sell' and pos.amount > 0)
                                      or (strategy.signal == 'buy' and pos.amount < 0)):
-                logging.info('Close position by stop-loss @ ' + str(trade['price']) + ' @ ' + str(pos.pl_pct) if pos.pl_pct <= -stop_pct
+                logging.info('Close position by stop-loss @ ' + str(trade['price']) + ' @ ' +
+                             str(pos.pl_pct) if pos.pl_pct <= -stop_pct
                              else 'Close position by signal @ ' + str(trade['price']) + ' @ ' + str(pos.pl_pct))
                 pos.close()
             if pos.pl_pct >= trailing_profit_pct and not pos.trailing:
@@ -105,7 +106,7 @@ for trade in trade_cursor:
                 positions.append(pos)
                 pos = Position()
         # print(candle.start, candle.end, candle.open, candle.high, candle.low, candle.close, candle.volume)
-        candle = OHCLV()
+        candle = OHLCV()
 
 # print(pos.base, pos.amount, pos.pl, pos.pl_pct)
 profit = 0

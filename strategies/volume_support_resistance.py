@@ -3,11 +3,17 @@ from common.ohlcv import OHLCV
 
 class VolumeSupportResistance(object):
     def __init__(self, min_len: int=1, max_len: int=1000, diff: float=1):
+        """
+        Volume, support, resistance strategy
+        :param min_len: minimum length
+        :param max_len: maximum length
+        :param diff:
+        """
         self.lookback = []
         self.signal = ''
         self.min_len = min_len
         self.max_len = max_len
-        self.diff = diff
+        self.diff = diff / 100
         self.length = min_len
         self.support = 0
         self.resistance = 0
@@ -15,13 +21,18 @@ class VolumeSupportResistance(object):
         self.buy_vol = 0
 
     def calc(self):
-        # Calculate support and resistance
+        """
+        Calculate
+        :return:
+        """
         self.support = 0
         self.resistance = 0
         self.sell_vol = 0
         self.buy_vol = 0
         if len(self.lookback) >= self.length:
-            for candle in self.lookback:
+            for i, candle in enumerate(self.lookback):
+                if i > self.length:
+                    break
                 if self.resistance == 0 or candle.close > self.resistance:
                     self.resistance = candle.close
                 if self.support == 0 or candle.close < self.support:
