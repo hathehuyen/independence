@@ -3,6 +3,7 @@ import logging
 import time
 from db import *
 from common.ohlcv import OHLCV
+from common.order import Order
 from common.position import Position
 # from strategies.volume_support_resistance import VolumeSupportResistance
 # from strategies.volume_based import VolumeBased
@@ -21,19 +22,21 @@ margin = 1000
 # 5 seconds
 # candle_period = 5000
 candle_period = 60000
-min_length = 60
-max_length = 60
-diff = 4
+min_length = 45
+max_length = 45
+diff = 2
+order_diff = 1
+order_valid_time = 60000 * 15
 # Back test data settings
 selector = 'bitfinex.LTC-USD'
 start = time.mktime(datetime.strptime('201802150000', "%Y%m%d%H%M%S").timetuple()) * 1000
 end = time.mktime(datetime.strptime('201804152359', "%Y%m%d%H%M%S").timetuple()) * 1000
 
 # Trailing stop percent
-trailing_profit_pct = 2
+trailing_profit_pct = 1
 trailing_stop_pct = 0.1
 # Stop loss percent
-stop_pct = 2
+stop_pct = 1
 
 # print(start, end)
 
@@ -46,9 +49,10 @@ strategy = Retrace(min_len=min_length, max_len=max_length, diff=diff)
 # strategy = VolumeBased(min_len=min_length, max_len=max_length, diff=diff)
 # strategy = VolumeSupportResistance(min_len=min_length, max_len=max_length, diff=diff)
 # strategy = Independence(min_len=min_length, max_len=max_length, diff=diff)
+order = None
 pos = Position()
 positions = []
-last_signal = ''
+last_signal = None
 pl = 0
 price_index = []
 price_value = []
@@ -68,48 +72,39 @@ for trade in trade_cursor:
         price_value.append(candle.close)
         # Add candle to strategy
         strategy.add_candle(candle)
-        # print(candle.volume, candle.sell_vol, candle.buy_vol)
-        # print(strategy.signal)
-        # if strategy.signal != last_signal:
-        #     if strategy.signal == 'buy':
-        #         buy_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
-        #         buy_value.append(candle.close)
-        #     elif strategy.signal == 'sell':
-        #         sell_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
-        #         sell_value.append(candle.close)
-        # We got a new signal that difference from last signal
-        if strategy.signal != last_signal:
-            # logging.info(last_signal + '->' + strategy.signal + ':' + str(trade['price']))
-            # print(last_signal, '->', strategy.signal)
-            # Open long position
-            if strategy.signal == 'buy' and pos.status != 'ACTIVE' and trade['price'] != 0:
-                logging.info('Open long position @ ' + str(trade['price']) + " length: " + str(strategy.length))
-                pos.open('btcusd', float(trade['price']), margin / float(trade['price']))
-                # Set target and stop loss
-                # trailing_profit_pct = strategy.up_percent / 2
-                # stop_pct = trailing_profit_pct
-                buy_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
-                buy_value.append(candle.close)
-            # Open short position
-            if strategy.signal == 'sell' and pos.status != 'ACTIVE' and trade['price'] != 0:
-                logging.info('Open short position @ ' + str(trade['price']) + " length: " + str(strategy.length))
-                pos.open('btcusd', float(trade['price']), -margin / float(trade['price']))
-                # Set target and stop loss
-                # trailing_profit_pct = strategy.down_percent / 2
-                # stop_pct = trailing_profit_pct
-                sell_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
-                sell_value.append(candle.close)
-            last_signal = strategy.signal
-        # Calculate position P/L
+        # We got a new signal that difference from last signal => open an order
+        if strategy.signal and strategy.signal != last_signal:
+            if pos.status != 'ACTIVE':
+                if not order:
+                    if strategy.signal == 'buy':
+                        price = candle.close - (candle.close * order_diff / 100)
+                    elif strategy.signal == 'sell':
+                        price = candle.close + (candle.close * order_diff / 100)
+                    else:
+                        price = candle.close
+                    order = Order(candle.end, order_valid_time, price, strategy.signal)
+        # Check order status
+        if order:
+            if order.status == 'ACTIVE':
+                order.check_status(candle)
+            if order.status == 'FILLED':
+                if order.side == 'buy':
+                    logging.info('Open long position @ ' + str(order.price) + " length: " + str(strategy.length))
+                    pos.open('btcusd', order.price, margin / float(order.price))
+                    buy_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
+                    buy_value.append(order.price)
+                if order.side == 'Sell':
+                    logging.info('Open short position @ ' + str(order.price) + " length: " + str(strategy.length))
+                    pos.open('btcusd', order.price, -margin / float(order.price))
+                    sell_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
+                    sell_value.append(order.price)
+                order = None
+            elif order.status == 'CANCELED':
+                order = None
         if pos.status == 'ACTIVE':
             pos.calc(trade)
-            # if not pos.trailing and (pos.pl_pct <= -stop_pct
-            #                          or (strategy.signal == 'sell' and pos.amount > 0)
-            #                          or (strategy.signal == 'buy' and pos.amount < 0)):
             if not pos.trailing and pos.pl_pct <= -stop_pct:
-                logging.info('Close position by stop-loss @ ' + str(trade['price']) + ' @ ' +
-                             str(pos.pl_pct) if pos.pl_pct <= -stop_pct
-                             else 'Close position by signal @ ' + str(trade['price']) + ' @ ' + str(pos.pl_pct))
+                logging.info('Close position by stop-loss @ ' + str(trade['price']) + ' @ ' + str(pos.pl_pct))
                 pos.close()
                 if pos.amount > 0:
                     sell_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
@@ -121,22 +116,80 @@ for trade in trade_cursor:
                 pos.trailing_stop(trailing_stop_pct)
             if pos.status != "CLOSED" and pos.trailing:
                 pos.trailing_stop(trailing_stop_pct)
-            if pos.status == "CLOSED":
-                if pos.trailing:
-                    logging.info('Close position by trailing @ ' + str(trade['price']) + ' @ ' + str(pos.pl_pct))
-                if pos.amount > 0:
-                    sell_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
-                    sell_value.append(candle.close)
-                else:
-                    buy_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
-                    buy_value.append(candle.close)
-                pl += pos.pl
-                pl_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
-                pl_value.append(pl)
-                logging.info('PL: ' + str(pl))
-                positions.append(pos)
-                pos = Position()
+        if pos.status == "CLOSED":
+            if pos.trailing:
+                logging.info('Close position by trailing @ ' + str(trade['price']) + ' @ ' + str(pos.pl_pct))
+            if pos.amount > 0:
+                sell_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
+                sell_value.append(candle.close)
+            else:
+                buy_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
+                buy_value.append(candle.close)
+            pl += pos.pl
+            pl_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
+            pl_value.append(pl)
+            logging.info('PL: ' + str(pl))
+            positions.append(pos)
+            pos = Position()
         candle = OHLCV()
+        #     # logging.info(last_signal + '->' + strategy.signal + ':' + str(trade['price']))
+        #     # print(last_signal, '->', strategy.signal)
+        #     # Open long position
+        #     if strategy.signal == 'buy' and pos.status != 'ACTIVE' and trade['price'] != 0:
+        #         logging.info('Open long position @ ' + str(trade['price']) + " length: " + str(strategy.length))
+        #         pos.open('btcusd', float(trade['price']), margin / float(trade['price']))
+        #         # Set target and stop loss
+        #         # trailing_profit_pct = strategy.up_percent / 2
+        #         # stop_pct = trailing_profit_pct
+        #         buy_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
+        #         buy_value.append(candle.close)
+        #     # Open short position
+        #     if strategy.signal == 'sell' and pos.status != 'ACTIVE' and trade['price'] != 0:
+        #         logging.info('Open short position @ ' + str(trade['price']) + " length: " + str(strategy.length))
+        #         pos.open('btcusd', float(trade['price']), -margin / float(trade['price']))
+        #         # Set target and stop loss
+        #         # trailing_profit_pct = strategy.down_percent / 2
+        #         # stop_pct = trailing_profit_pct
+        #         sell_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
+        #         sell_value.append(candle.close)
+        #     last_signal = strategy.signal
+        # # Calculate position P/L
+        # if pos.status == 'ACTIVE':
+        #     pos.calc(trade)
+        #     # if not pos.trailing and (pos.pl_pct <= -stop_pct
+        #     #                          or (strategy.signal == 'sell' and pos.amount > 0)
+        #     #                          or (strategy.signal == 'buy' and pos.amount < 0)):
+        #     if not pos.trailing and pos.pl_pct <= -stop_pct:
+        #         logging.info('Close position by stop-loss @ ' + str(trade['price']) + ' @ ' +
+        #                      str(pos.pl_pct) if pos.pl_pct <= -stop_pct
+        #                      else 'Close position by signal @ ' + str(trade['price']) + ' @ ' + str(pos.pl_pct))
+        #         pos.close()
+        #         if pos.amount > 0:
+        #             sell_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
+        #             sell_value.append(candle.close)
+        #         else:
+        #             buy_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
+        #             buy_value.append(candle.close)
+        #     if pos.pl_pct >= trailing_profit_pct and not pos.trailing:
+        #         pos.trailing_stop(trailing_stop_pct)
+        #     if pos.status != "CLOSED" and pos.trailing:
+        #         pos.trailing_stop(trailing_stop_pct)
+        #     if pos.status == "CLOSED":
+        #         if pos.trailing:
+        #             logging.info('Close position by trailing @ ' + str(trade['price']) + ' @ ' + str(pos.pl_pct))
+        #         if pos.amount > 0:
+        #             sell_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
+        #             sell_value.append(candle.close)
+        #         else:
+        #             buy_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
+        #             buy_value.append(candle.close)
+        #         pl += pos.pl
+        #         pl_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
+        #         pl_value.append(pl)
+        #         logging.info('PL: ' + str(pl))
+        #         positions.append(pos)
+        #         pos = Position()
+        # candle = OHLCV()
 
 # print(pos.base, pos.amount, pos.pl, pos.pl_pct)
 profit = 0
@@ -151,7 +204,7 @@ for position in positions:
         loses += 1
 print(len(positions), 'position traded over', (end - start) / 1000 / 60 / 60 / 24, 'days')
 print('Wins/Loses:', wins, '/', loses)
-fee = len(positions) * margin * 0.004
+fee = len(positions) * margin * 0.003
 print('Profit:', profit - fee)
 print('ROI%: ', (profit - fee) / margin * 100)
 # print(len(buy_value), len(sell_value), len(buy_index), len(sell_index))

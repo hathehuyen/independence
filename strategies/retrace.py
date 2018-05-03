@@ -10,7 +10,7 @@ class Retrace(object):
         :param diff: difference percentage
         """
         self.lookback = []
-        self.signal = ''
+        self.signal = None
         self.break_up = False
         self.break_down = False
         self.min_len = min_len
@@ -55,7 +55,7 @@ class Retrace(object):
         """
         # Calculate signal
         if self.support != 0:
-            self.signal = 'none'
+            self.signal = None
             if candle.close >= self.resistance:
                 self.break_up = True
             if candle.close <= self.support:
