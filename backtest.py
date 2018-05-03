@@ -22,21 +22,21 @@ margin = 1000
 # 5 seconds
 # candle_period = 5000
 candle_period = 60000
-min_length = 45
-max_length = 45
-diff = 2
+min_length = 120
+max_length = 120
+diff = 4
 order_diff = 1
 order_valid_time = 60000 * 15
 # Back test data settings
-selector = 'bitfinex.LTC-USD'
-start = time.mktime(datetime.strptime('201802150000', "%Y%m%d%H%M%S").timetuple()) * 1000
+selector = 'bitfinex.BTC-USD'
+start = time.mktime(datetime.strptime('201702150000', "%Y%m%d%H%M%S").timetuple()) * 1000
 end = time.mktime(datetime.strptime('201804152359', "%Y%m%d%H%M%S").timetuple()) * 1000
 
 # Trailing stop percent
-trailing_profit_pct = 1
+trailing_profit_pct = 100
 trailing_stop_pct = 0.1
 # Stop loss percent
-stop_pct = 1
+stop_pct = 100
 
 # print(start, end)
 
@@ -89,15 +89,17 @@ for trade in trade_cursor:
                 order.check_status(candle)
             if order.status == 'FILLED':
                 if order.side == 'buy':
-                    logging.info('Open long position @ ' + str(order.price) + " length: " + str(strategy.length))
+                    logging.info('Open long position @ ' + str(order.price) + " diff: " + str(strategy.up_percent * 100))
                     pos.open('btcusd', order.price, margin / float(order.price))
                     buy_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
                     buy_value.append(order.price)
                 if order.side == 'Sell':
-                    logging.info('Open short position @ ' + str(order.price) + " length: " + str(strategy.length))
+                    logging.info('Open short position @ ' + str(order.price) + " diff: " + str(strategy.down_percent * 100))
                     pos.open('btcusd', order.price, -margin / float(order.price))
                     sell_index.append(datetime.fromtimestamp(float(candle.start / 1000)))
                     sell_value.append(order.price)
+                stop_pct = strategy.down_percent * 100 / 2
+                trailing_profit_pct = stop_pct
                 order = None
             elif order.status == 'CANCELED':
                 order = None
