@@ -17,6 +17,8 @@ class Position(object):
         self.pl_pct = 0
         self.trailing = False
         self.last_pl_pct = 0
+        self.buying_price = None
+        self.selling_price = None
 
     def calc(self, trade):
         """
@@ -27,6 +29,12 @@ class Position(object):
         if self.base != 0 and self.amount != 0:
             self.pl = trade['price'] * self.amount - self.base * self.amount
             self.pl_pct = self.pl / abs(self.base * self.amount) * 100
+
+    def buy(self, price: float):
+        self.buying_price = price
+
+    def sell(self, price: float):
+        self.selling_price = price
 
     def open(self, symbol='btcusd', base: float = 0, amount: float = 0):
         """
