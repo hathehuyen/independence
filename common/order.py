@@ -25,7 +25,7 @@ class Order(object):
         """
         if self.status == 'ACTIVE' and ohlcv.end - self.time >= self.valid_time:
             self.status = 'CANCELED'
-            # print('Order canceled')
+            print('Order canceled')
         elif (self.side == 'buy' and ohlcv.low < self.price) or (self.side == 'sell' and ohlcv.high > self.price):
             self.status = 'FILLED'
             # print('Order filled')

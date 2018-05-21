@@ -1,7 +1,7 @@
 from common.ohlcv import OHLCV
 
 
-class VolumeSupportResistance(object):
+class Extend(object):
     def __init__(self, min_len: int=1, max_len: int=1000, diff: float=1):
         """
         Volume, support, resistance strategy
@@ -10,12 +10,14 @@ class VolumeSupportResistance(object):
         :param diff: difference percentage
         """
         self.lookback = []
-        self.signal = ''
+        self.signal = None
         self.break_up = False
         self.break_down = False
         self.min_len = min_len
         self.max_len = max_len
         self.diff = diff / 100
+        self.up_percent = 0
+        self.down_percent = 0
         self.length = min_len
         self.support = 0
         self.resistance = 0
@@ -40,19 +42,10 @@ class VolumeSupportResistance(object):
                     self.resistance = candle.close
                 if self.support == 0 or candle.close < self.support:
                     self.support = candle.close
-                self.buy_vol += candle.buy_vol
-                self.sell_vol += candle.sell_vol
-        # Adjusting look back period length
-        if self.support != 0:
-            if (self.resistance - self.support) / self.support < self.diff:
-                self.length += 1
-            if (self.resistance - self.support) / self.support > self.diff:
-                self.length -= 1
-            if self.length < self.min_len:
-                self.length = self.min_len
-            if self.length > self.max_len:
-                self.length = self.max_len
-        # print(self.length)
+                # self.buy_vol += candle.buy_vol
+                # self.sell_vol += candle.sell_vol
+            self.up_percent = (self.resistance - self.support) / self.support
+            self.down_percent = (self.resistance - self.support) / self.resistance
 
     def add_candle(self, candle: OHLCV):
         """
@@ -62,30 +55,17 @@ class VolumeSupportResistance(object):
         """
         # Calculate signal
         if self.support != 0:
-            self.signal = 'none'
+            self.signal = None
             if candle.close >= self.resistance:
                 self.break_up = True
             if candle.close <= self.support:
                 self.break_down = True
-            if self.break_up and self.buy_vol > self.sell_vol * 1.1:
-                self.signal = 'sell'
-                self.break_up = False
-            if self.break_down and self.sell_vol > self.buy_vol * 1.1:
+            if self.up_percent >= self.diff \
+                    and self.lookback[0].close < self.lookback[-1].close:
                 self.signal = 'buy'
-                self.break_up = False
-
-            # if self.break_up and (self.buy_vol - self.sell_vol) / self.sell_vol > self.diff:
-            #     self.signal = 'buy'
-            #     self.break_up = False
-            #     self.break_down =False
-            # elif self.break_down and (self.sell_vol - self.buy_vol) / self.buy_vol > self.diff:
-            #     self.signal = 'sell'
-            #     self.break_up = False
-            #     self.break_down =False
-            # elif self.break_up and (self.buy_vol - self.sell_vol) / self.sell_vol < self.diff:
-            #     self.signal = 'sell'
-            # elif self.break_down and (self.sell_vol - self.buy_vol) / self.buy_vol < self.diff:
-            #     self.signal = 'buy'
+            if self.down_percent >= self.diff \
+                    and self.lookback[0].close > self.lookback[-1].close:
+                self.signal = 'sell'
         # Add OHCLV candle to list
         self.lookback.append(candle)
         # Calc

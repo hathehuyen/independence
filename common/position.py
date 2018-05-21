@@ -17,6 +17,8 @@ class Position(object):
         self.pl_pct = 0
         self.trailing = False
         self.last_pl_pct = 0
+        self.fee_pct = 0.2
+        self.fee = 0
         self.buying_price = None
         self.selling_price = None
 
@@ -27,7 +29,7 @@ class Position(object):
         :return:
         """
         if self.base != 0 and self.amount != 0:
-            self.pl = trade['price'] * self.amount - self.base * self.amount
+            self.pl = trade['price'] * self.amount - self.base * self.amount - self.fee
             self.pl_pct = self.pl / abs(self.base * self.amount) * 100
 
     def buy(self, price: float):
@@ -35,6 +37,11 @@ class Position(object):
 
     def sell(self, price: float):
         self.selling_price = price
+
+    def add(self, price: float = 0, amount: float = 0):
+        self.base = (self.base * self.amount + price * amount) / (self.amount + amount)
+        self.amount += amount
+        self.fee += abs(amount) * price * self.fee_pct / 100
 
     def open(self, symbol='btcusd', base: float = 0, amount: float = 0):
         """
@@ -48,6 +55,7 @@ class Position(object):
         self.status = 'ACTIVE'
         self.base = base
         self.amount = amount
+        self.fee = abs(amount) * base * self.fee_pct / 100
 
     def close(self):
         """
