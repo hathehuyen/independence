@@ -19,8 +19,6 @@ class Position(object):
         self.last_pl_pct = 0
         self.fee_pct = 0.2
         self.fee = 0
-        self.buying_price = None
-        self.selling_price = None
 
     def calc(self, trade):
         """
@@ -32,11 +30,6 @@ class Position(object):
             self.pl = trade['price'] * self.amount - self.base * self.amount - self.fee
             self.pl_pct = self.pl / abs(self.base * self.amount) * 100
 
-    def buy(self, price: float):
-        self.buying_price = price
-
-    def sell(self, price: float):
-        self.selling_price = price
 
     def add(self, price: float = 0, amount: float = 0):
         self.base = (self.base * self.amount + price * amount) / (self.amount + amount)

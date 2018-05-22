@@ -34,15 +34,15 @@ order_diff = 0.5
 order_valid_time = 60000 * 60
 # Back test data settings
 selector = 'bitfinex.BTC-USD'
-start = time.mktime(datetime.strptime('201712010000', "%Y%m%d%H%M%S").timetuple()) * 1000
+start = time.mktime(datetime.strptime('201709010000', "%Y%m%d%H%M%S").timetuple()) * 1000
 end = time.mktime(datetime.strptime('201804302359', "%Y%m%d%H%M%S").timetuple()) * 1000
 
-add_percent = 4
+add_percent = 10
 # Trailing stop percent
-trailing_profit_pct = 5
+trailing_profit_pct = 2
 trailing_stop_pct = 0.2
 # Stop loss percent
-stop_pct = 5
+stop_pct = 10
 
 # print(start, end)
 
@@ -58,6 +58,7 @@ pos = Position()
 positions = []
 last_signal = None
 pl = 0
+max_margin_used = 0
 plot_price_index = []
 plot_price_value = []
 plot_buy_index = []
@@ -72,7 +73,7 @@ plot_macd_long = []
 
 def check_position(candle: OHLCV, trade):
     # Check position status
-    global margin
+    global max_margin_used
     global pos
     global pl
     global plot_sell_index
@@ -83,12 +84,13 @@ def check_position(candle: OHLCV, trade):
     global plot_pl_value
     if pos.status == 'ACTIVE':
         pos.calc(trade)
-        if pos.pl_pct <= -add_percent and abs(pos.amount * pos.base) < margin:
+        if not pos.trailing and pos.pl_pct <= -add_percent and abs(pos.amount * pos.base) < margin:
             pos.add(trade['price'], pos.amount)
             pos.calc(trade)
+            logging.info('Add ' + str(pos.amount) + '@' + str(trade['price']) + '- base: ' + str(pos.base))
         if not pos.trailing and pos.pl_pct <= -stop_pct:
             pos.close()
-        if pos.pl_pct >= trailing_profit_pct and not pos.trailing:
+        if not pos.trailing and pos.pl_pct >= trailing_profit_pct:
             pos.trailing_stop(trailing_stop_pct)
         if pos.status != "CLOSED" and pos.trailing:
             pos.trailing_stop(trailing_stop_pct)
@@ -108,8 +110,8 @@ def check_position(candle: OHLCV, trade):
         plot_pl_value.append(pl)
         logging.info('PL: ' + str(pl))
         positions.append(pos)
-        if pos.amount * pos.base > margin:
-            margin = pos.amount * pos.base
+        if pos.amount * pos.base > max_margin_used:
+            max_margin_used = pos.amount * pos.base
         pos = Position()
 
 
@@ -166,22 +168,19 @@ for trade in trade_cursor:
 
 if pos.status == 'ACTIVE':
     positions.append(pos)
-# print(pos.base, pos.amount, pos.pl, pos.pl_pct)
-profit = 0
+    pl += pos.pl - (pos.fee * 2)
 wins = 0
 loses = 0
 for position in positions:
-    # print(position.pl)
-    profit += position.pl
     if position.pl > 0:
         wins += 1
-    else:
+    elif position.pl < 0:
         loses += 1
 print(len(positions), 'position traded over', (end - start) / 1000 / 60 / 60 / 24, 'days')
 print('Wins/Loses:', wins, '/', loses)
-print('Profit:', profit)
-print('ROI%: ', profit / margin * 100)
-print('Max margin used: ', margin)
+print('Profit:', pl)
+print('ROI%: ', pl / max_margin_used * 100)
+print('Max margin used: ', max_margin_used)
 # print(len(buy_value), len(sell_value), len(buy_index), len(sell_index))
 plt.plot(plot_price_index, plot_price_value, 'b-', label='Price')
 plt.plot(plot_price_index, plot_macd_short, 'g-', label='MA12')
